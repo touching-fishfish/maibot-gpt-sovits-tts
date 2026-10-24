@@ -39,7 +39,8 @@ class VitsConfig(PluginConfigBase):
 
     api_url: str = Field(default="http://localhost:9880/", description="GPT-SoVITS API 地址")
     default_voice_id: str = Field(default="0", description="默认音色 ID")
-    language: str = Field(default="zh", description="文本与参考音频语言")
+    language: str = Field(default="zh", description="参考音频（prompt）的语言：zh/en/ja/all_ja 等，须与参考音频实际语言一致")
+    text_language: str = Field(default="zh", description="合成文本的语言：可不同于参考音频语言（如参考音频是日语、要说中文则填 zh）")
     ref_audio_path: str = Field(default="", description="参考音频绝对路径")
     prompt_text: str = Field(default="", description="参考音频文本")
     timeout: int = Field(default=60, description="请求超时时间（秒）")
@@ -121,7 +122,7 @@ class GPTSoVITSV2TTSPlugin(MaiBotPlugin):
         )
         return success, message
 
-    @Command("vits_tts_command", description="手动语音合成", pattern=r"^/vits\s+(?P<text>.+?)(?:\s+(?P<voice_id>\d+))?$")
+    @Command("vits_tts_command", description="手动语音合成", pattern=r"^/(?:vits|说|语音|speak)\s+(?P<text>.+?)(?:\s+(?P<voice_id>\d+))?$")
     async def handle_vits_command(self, stream_id: str = "", **kwargs: Any):
         if not self.config.components.command_enabled:
             return False, "/vits 命令未启用", True
@@ -338,7 +339,10 @@ class GPTSoVITSV2TTSPlugin(MaiBotPlugin):
 
         api_urls = self._candidate_api_urls(self.config.vits.api_url)
         ref_path = self.config.vits.ref_audio_path
-        language = self.config.vits.language
+        # 参考音频语言（prompt_lang）与合成文本语言（text_lang）可不同：
+        # 例如日语训练的模型配日语参考音频，但合成中文文本，会带轻微日语口音。
+        prompt_language = self.config.vits.language
+        text_language = self.config.vits.text_language or prompt_language
         retry_count = max(1, int(self.config.vits.retry_count))
         max_text_length = max(1, int(self.config.vits.max_text_length))
 
@@ -354,21 +358,34 @@ class GPTSoVITSV2TTSPlugin(MaiBotPlugin):
         except Exception:
             spk_id = 0
 
-        tts_text = await self.prepare_tts_text(text, language=language, max_text_length=max_text_length)
+        tts_text = await self.prepare_tts_text(text, language=text_language, max_text_length=max_text_length)
         if not tts_text:
             self.ctx.logger.warning("TTS 文本语言改写失败，已阻止继续合成")
             return None
-        self.ctx.logger.info("TTS 最终提交文本 language=%s text=%s", language, tts_text[:160])
+        self.ctx.logger.info(
+            "TTS 最终提交文本 text_lang=%s prompt_lang=%s text=%s",
+            text_language, prompt_language, tts_text[:160],
+        )
 
         payload = {
             "text": tts_text,
             "speaker_id": spk_id,
-            "text_lang": language,
-            "prompt_lang": language,
+            "text_lang": text_language,
+            "prompt_lang": prompt_language,
             "ref_audio_path": ref_path,
-            "speed": 1.0,
-            "volume": 1.0,
+            # api_v2 实际参数：speed/volume 无效，改传标准采样参数
+            "speed_factor": 1.0,
+            # 默认 temperature=1.0 会让跨语言合成发虚，固定更稳的采样参数
+            "temperature": 0.6,
+            "top_k": 10,
+            "top_p": 0.7,
         }
+        # 参考音频对应文本：填了能提升音色/韵律还原度；没填就让后端走 ref_free 模式
+        prompt_text = (self.config.vits.prompt_text or "").strip()
+        if prompt_text:
+            payload["prompt_text"] = prompt_text
+        else:
+            payload["ref_free"] = True
 
         last_error = None
         for attempt in range(1, retry_count + 1):

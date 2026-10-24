@@ -1,3 +1,21 @@
+## Alan 分享版
+
+这是 [原项目](https://github.com/Shiroha135/GPT-SoVITS-v2-TTS-Plugin) 的本地补丁分享版，原作者和许可证保留。
+
+拆分参考音频与文本语言；传入参考文本与采样参数；增加 /说、/语音、/speak 命令别名。
+
+安装时使用本仓库的默认分支 `alan-local`：
+
+```sh
+git clone --branch alan-local https://github.com/touching-fishfish/maibot-gpt-sovits-tts.git
+```
+
+将克隆的插件文件夹放入 MaiBot 的 `plugins/`，按下方原版说明安装依赖、填写自己的配置，重启 MaiBot 后启用。
+
+本仓库只带源码和通用配置示例；API 密钥、参考音频、模型权重和个人数据须自行配置。[本地补丁与验证范围](LOCAL_CHANGES.md)。
+
+---
+
 # _🎤 VITS TTS 插件说明文档_
 
 ## 一、📢 _插件介绍_

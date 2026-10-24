@@ -36,6 +36,9 @@ default_voice_id = "0"
 # 默认语言（zh/en/ja等）
 language = "zh"
 
+# 合成文本语言，可与参考音频语言不同
+text_language = "zh"
+
 # 关键：填写参考音频绝对路径（路径分隔符用 / 或 \\）
 # 例如：D:\\GPT-SoVITS-v2\\参考音频\\example.wav
 ref_audio_path = ""
